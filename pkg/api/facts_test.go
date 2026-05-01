@@ -47,3 +47,54 @@ func TestFacts_Clear(t *testing.T) {
 		t.Error("expected nil after clear")
 	}
 }
+
+func TestFacts_String(t *testing.T) {
+	facts := NewFacts()
+	facts.Put("x", 42)
+	s := facts.String()
+	if s == "" {
+		t.Error("expected non-empty string representation")
+	}
+}
+
+func TestFact_String(t *testing.T) {
+	f := &Fact{Name: "rain", Value: true}
+	s := f.String()
+	if s == "" {
+		t.Error("expected non-empty Fact.String()")
+	}
+}
+
+func TestEngineParameters_Defaults(t *testing.T) {
+	p := NewEngineParameters()
+	if p.SkipOnFirstAppliedRule {
+		t.Error("SkipOnFirstAppliedRule should default to false")
+	}
+	if p.PriorityThreshold == 0 {
+		t.Error("PriorityThreshold should be MaxInt")
+	}
+}
+
+func TestDefaultRuleListener_NoOps(t *testing.T) {
+	l := &DefaultRuleListener{}
+	facts := NewFacts()
+	rule := &mockRule{name: "mock", priority: 0}
+	// None of these should panic
+	if !l.BeforeEvaluate(rule, facts) {
+		t.Error("BeforeEvaluate should return true")
+	}
+	l.AfterEvaluate(rule, facts, true)
+	l.OnEvaluationError(rule, facts, nil)
+	l.BeforeExecute(rule, facts)
+	l.OnSuccess(rule, facts)
+	l.OnFailure(rule, facts, nil)
+}
+
+func TestDefaultRulesEngineListener_NoOps(t *testing.T) {
+	l := &DefaultRulesEngineListener{}
+	facts := NewFacts()
+	rules := NewRules()
+	// None of these should panic
+	l.BeforeEvaluate(rules, facts)
+	l.AfterExecute(rules, facts)
+}

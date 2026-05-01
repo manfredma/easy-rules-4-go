@@ -60,3 +60,28 @@ func TestBasicRule_Embed(t *testing.T) {
 		t.Error("expected true from embedded evaluate")
 	}
 }
+
+func TestBasicRule_Setters(t *testing.T) {
+	r := NewBasicRule("original", "original desc", 1)
+	r.SetName("updated")
+	r.SetDescription("updated desc")
+	r.SetPriority(99)
+
+	if r.GetName() != "updated" {
+		t.Errorf("expected updated, got %s", r.GetName())
+	}
+	if r.GetDescription() != "updated desc" {
+		t.Errorf("expected updated desc, got %s", r.GetDescription())
+	}
+	if r.GetPriority() != 99 {
+		t.Errorf("expected 99, got %d", r.GetPriority())
+	}
+}
+
+func TestBasicRule_GetDescriptionDefault(t *testing.T) {
+	r := &BasicRule{}
+	// empty description should return default
+	if r.GetDescription() != api.DefaultRuleDescription {
+		t.Errorf("expected default description, got %s", r.GetDescription())
+	}
+}

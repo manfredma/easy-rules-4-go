@@ -142,11 +142,123 @@ func TestDefaultEngine_RuleListener(t *testing.T) {
 	}
 }
 
+func TestDefaultEngine_GetParameters(t *testing.T) {
+	params := api.NewEngineParameters()
+	params.PriorityThreshold = 42
+	engine := NewDefaultRulesEngine(params)
+	if engine.GetParameters().PriorityThreshold != 42 {
+		t.Error("expected PriorityThreshold=42")
+	}
+}
+
+func TestDefaultEngine_GetRuleListeners(t *testing.T) {
+	engine := NewDefaultRulesEngine(api.NewEngineParameters())
+	if engine.GetRuleListeners() != nil {
+		t.Error("expected nil listeners initially")
+	}
+	engine.RegisterRuleListener(&testRuleListener{})
+	if len(engine.GetRuleListeners()) != 1 {
+		t.Error("expected 1 rule listener")
+	}
+}
+
+func TestDefaultEngine_GetEngineListeners(t *testing.T) {
+	engine := NewDefaultRulesEngine(api.NewEngineParameters())
+	if engine.GetEngineListeners() != nil {
+		t.Error("expected nil engine listeners initially")
+	}
+	engine.RegisterEngineListener(&testEngineListener{})
+	if len(engine.GetEngineListeners()) != 1 {
+		t.Error("expected 1 engine listener")
+	}
+}
+
+func TestDefaultEngine_EngineListenerCallbacks(t *testing.T) {
+	var beforeCalled, afterCalled bool
+	listener := &testEngineListener{
+		beforeEvaluate: func(_ *api.Rules, _ *api.Facts) { beforeCalled = true },
+		afterExecute:   func(_ *api.Rules, _ *api.Facts) { afterCalled = true },
+	}
+	rules := api.NewRules(NewRuleBuilder().Name("r1").When(api.ConditionTrue).Then(func(_ *api.Facts) error { return nil }).Build())
+	engine := NewDefaultRulesEngine(api.NewEngineParameters())
+	engine.RegisterEngineListener(listener)
+	engine.Fire(rules, api.NewFacts())
+	if !beforeCalled {
+		t.Error("expected engine BeforeEvaluate to be called")
+	}
+	if !afterCalled {
+		t.Error("expected engine AfterExecute to be called")
+	}
+}
+
+func TestDefaultEngine_OnFailureListener(t *testing.T) {
+	var failureCalled bool
+	listener := &testRuleListener{
+		onFailure: func(_ api.Rule, _ *api.Facts, _ error) { failureCalled = true },
+	}
+	rules := api.NewRules(
+		NewRuleBuilder().Name("r1").When(api.ConditionTrue).Then(func(_ *api.Facts) error { return errors.New("fail") }).Build(),
+	)
+	engine := NewDefaultRulesEngine(api.NewEngineParameters())
+	engine.RegisterRuleListener(listener)
+	engine.Fire(rules, api.NewFacts())
+	if !failureCalled {
+		t.Error("expected OnFailure to be called")
+	}
+}
+
+func TestDefaultEngine_NilParams(t *testing.T) {
+	// NewDefaultRulesEngine with nil params should not panic
+	engine := NewDefaultRulesEngine(nil)
+	if engine.GetParameters() == nil {
+		t.Error("expected non-nil parameters")
+	}
+}
+
+func TestDefaultEngine_PanicRecovery(t *testing.T) {
+	// A rule whose Evaluate panics should trigger OnEvaluationError
+	var evalErrCalled bool
+	listener := &testRuleListener{
+		evalErr: func(_ api.Rule, _ *api.Facts, _ error) { evalErrCalled = true },
+	}
+	panicRule := NewRuleBuilder().
+		Name("panic-rule").
+		When(func(_ *api.Facts) bool { panic("boom") }).
+		Then(func(_ *api.Facts) error { return nil }).
+		Build()
+	rules := api.NewRules(panicRule)
+	engine := NewDefaultRulesEngine(api.NewEngineParameters())
+	engine.RegisterRuleListener(listener)
+	engine.Fire(rules, api.NewFacts()) // must not panic
+	if !evalErrCalled {
+		t.Error("expected OnEvaluationError to be called on panic")
+	}
+}
+
+func TestDefaultEngine_SkipOnFirstNonTriggeredAfterPanic(t *testing.T) {
+	// panic in Evaluate with SkipOnFirstNonTriggeredRule=true should stop
+	count := 0
+	panicRule := NewRuleBuilder().
+		Name("panic-rule").Priority(1).
+		When(func(_ *api.Facts) bool { panic("boom") }).
+		Then(func(_ *api.Facts) error { return nil }).
+		Build()
+	countRule := makeCountRule("r2", 2, &count, 1)
+	params := api.NewEngineParameters()
+	params.SkipOnFirstNonTriggeredRule = true
+	engine := NewDefaultRulesEngine(params)
+	engine.Fire(api.NewRules(panicRule, countRule), api.NewFacts())
+	if count != 0 {
+		t.Errorf("expected 0 (stop after panic with SkipOnFirstNonTriggeredRule), got %d", count)
+	}
+}
+
 type testRuleListener struct {
 	api.DefaultRuleListener
 	beforeEvaluate func(api.Rule, *api.Facts) bool
 	onSuccess      func(api.Rule, *api.Facts)
 	onFailure      func(api.Rule, *api.Facts, error)
+	evalErr        func(api.Rule, *api.Facts, error)
 }
 
 func (l *testRuleListener) BeforeEvaluate(r api.Rule, f *api.Facts) bool {
@@ -165,5 +277,29 @@ func (l *testRuleListener) OnSuccess(r api.Rule, f *api.Facts) {
 func (l *testRuleListener) OnFailure(r api.Rule, f *api.Facts, err error) {
 	if l.onFailure != nil {
 		l.onFailure(r, f, err)
+	}
+}
+
+func (l *testRuleListener) OnEvaluationError(r api.Rule, f *api.Facts, err error) {
+	if l.evalErr != nil {
+		l.evalErr(r, f, err)
+	}
+}
+
+type testEngineListener struct {
+	api.DefaultRulesEngineListener
+	beforeEvaluate func(*api.Rules, *api.Facts)
+	afterExecute   func(*api.Rules, *api.Facts)
+}
+
+func (l *testEngineListener) BeforeEvaluate(rules *api.Rules, facts *api.Facts) {
+	if l.beforeEvaluate != nil {
+		l.beforeEvaluate(rules, facts)
+	}
+}
+
+func (l *testEngineListener) AfterExecute(rules *api.Rules, facts *api.Facts) {
+	if l.afterExecute != nil {
+		l.afterExecute(rules, facts)
 	}
 }

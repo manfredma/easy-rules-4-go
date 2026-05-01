@@ -39,3 +39,46 @@ func TestInferenceEngine_StopsWhenNoCandidates(t *testing.T) {
 		t.Errorf("expected 0 executions, got %d", count)
 	}
 }
+
+func TestInferenceEngine_GetParameters(t *testing.T) {
+	params := api.NewEngineParameters()
+	params.PriorityThreshold = 7
+	engine := NewInferenceRulesEngine(params)
+	if engine.GetParameters().PriorityThreshold != 7 {
+		t.Error("expected PriorityThreshold=7")
+	}
+}
+
+func TestInferenceEngine_GetRuleListeners(t *testing.T) {
+	engine := NewInferenceRulesEngine(api.NewEngineParameters())
+	if engine.GetRuleListeners() != nil {
+		t.Error("expected nil rule listeners initially")
+	}
+	engine.RegisterRuleListener(&api.DefaultRuleListener{})
+	if len(engine.GetRuleListeners()) != 1 {
+		t.Error("expected 1 rule listener after register")
+	}
+}
+
+func TestInferenceEngine_GetEngineListeners(t *testing.T) {
+	engine := NewInferenceRulesEngine(api.NewEngineParameters())
+	if engine.GetEngineListeners() != nil {
+		t.Error("expected nil engine listeners initially")
+	}
+	engine.RegisterEngineListener(&api.DefaultRulesEngineListener{})
+	if len(engine.GetEngineListeners()) != 1 {
+		t.Error("expected 1 engine listener after register")
+	}
+}
+
+func TestInferenceEngine_Check(t *testing.T) {
+	rules := api.NewRules(
+		NewRuleBuilder().Name("yes").When(api.ConditionTrue).Build(),
+		NewRuleBuilder().Name("no").When(api.ConditionFalse).Build(),
+	)
+	engine := NewInferenceRulesEngine(api.NewEngineParameters())
+	result := engine.Check(rules, api.NewFacts())
+	if len(result) != 2 {
+		t.Errorf("expected 2 entries, got %d", len(result))
+	}
+}
