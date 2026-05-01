@@ -1,0 +1,11 @@
+[
+  {
+    "name": "weather rule",
+    "description": "if it rains then take an umbrella",
+    "priority": 1,
+    "condition": "rain == true",
+    "actions": [
+      {"expr": "!umbrella", "outputKey": "umbrella"}
+    ]
+  }
+]
