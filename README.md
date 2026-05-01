@@ -1,0 +1,1 @@
+# easy-rules-4-go
